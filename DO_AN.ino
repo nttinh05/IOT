@@ -22,6 +22,10 @@ RtcDS1302<ThreeWire> Rtc(myWire);
 #define RST_PIN 22
 #define DHTPIN 4
 #define DHTTYPE DHT11
+#define MQ135 34
+#define BUZZER 15
+
+
 
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 Servo doorServo;
@@ -29,6 +33,7 @@ DHT dht(DHTPIN, DHTTYPE);
 byte masterCard[4] = {227, 202, 48, 3};
 
 int failCount = 0;
+int GAS_THRESHOLD = 7000;
 
 FirebaseData fbdo;
 FirebaseAuth auth;
@@ -42,6 +47,7 @@ Adafruit_SH1106G display = Adafruit_SH1106G(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, 
 int D = 2;
 int D1 = 32;
 int D2 = 5;
+
 
 void sendTempHumi(){
   float h = dht.readHumidity();
@@ -139,14 +145,18 @@ void setup(){
   pinMode(D, OUTPUT);
   pinMode(D1, OUTPUT);
   pinMode(D2, OUTPUT);
+  pinMode(MQ135, INPUT);
+  pinMode(BUZZER, OUTPUT);
+  digitalWrite(BUZZER, LOW);
 
-  WiFi.begin("Thanh Tinh", "18092005");
+
+  WiFi.begin("ThanhTinh", "12345678");
   while (WiFi.status() != WL_CONNECTED) {
     delay(300);
     Serial.print(".");
   }
 
-  Blynk.begin(BLYNK_AUTH_TOKEN, "Thanh Tinh", "18092005");
+  Blynk.begin(BLYNK_AUTH_TOKEN, "ThanhTinh", "12345678");
 
   config.database_url = "https://fir-f139e-default-rtdb.asia-southeast1.firebasedatabase.app/";
   config.signer.tokens.legacy_token = "k8YUiilWYjWDe61bHZcsRe4d3IJaVMEaINBK95U5";
@@ -167,9 +177,11 @@ void setup(){
   RtcDateTime compiled = RtcDateTime(__DATE__, __TIME__);
   Rtc.SetDateTime(compiled);
 
-  timer.setInterval(2000, readFirebase);
-  timer.setInterval(3000, displayTempHumi);
+  timer.setInterval(5000, readFirebase);
+  timer.setInterval(4000, displayTempHumi);
   timer.setInterval(3000, sendTempHumi);
+  timer.setInterval(2000, readMQ135);
+
 }
 
 void loop(){
@@ -237,3 +249,23 @@ void displayTempHumi(){
   display.printf("Do am   : %.1f %%", h);
   display.display();
 }
+
+void readMQ135(){
+  int gasValue = analogRead(MQ135);
+
+  Firebase.RTDB.setInt(&fbdo, "mq135/gas", gasValue);
+  Blynk.virtualWrite(V6, gasValue);
+
+  if(gasValue > GAS_THRESHOLD){
+    digitalWrite(BUZZER, HIGH);
+
+    Firebase.RTDB.setInt(&fbdo, "mq135/canhbao", 1);
+    Blynk.virtualWrite(V7, 1);
+  }
+  else{
+    digitalWrite(BUZZER, LOW);
+    Firebase.RTDB.setInt(&fbdo, "mq135/canhbao", 0);
+    Blynk.virtualWrite(V7, 0);
+  }
+}
+
